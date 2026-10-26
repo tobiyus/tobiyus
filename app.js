@@ -86,6 +86,47 @@ function render() {
 }
 
 // ---------- modal ----------
+// Short message at the bottom of the screen (replaces browser alert boxes).
+function toast(msg) {
+  let el = $('#toast');
+  if (!el) { el = document.createElement('div'); el.id = 'toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+// In-app confirm / text prompt. Resolves to true, the typed text, or null if cancelled.
+function ask({ title, message = '', input = null, ok = 'OK', danger = false }) {
+  return new Promise((resolve) => {
+    openModal(`<h2>${esc(title)}</h2>${message ? `<p>${esc(message)}</p>` : ''}
+      ${input !== null ? `<input id="ask-input" required value="${esc(input)}">` : ''}`,
+    (form) => { resolve(input !== null ? ($('#ask-input', form).value.trim() || null) : true); },
+    (form) => {
+      const b = form.querySelector('button[value="ok"]');
+      b.textContent = ok;
+      if (danger) b.classList.add('danger-fill');
+      $('#modal').addEventListener('close', () => resolve(null), { once: true });
+    });
+  });
+}
+
+// Show text in a box with a copy button (used when the clipboard is refused).
+function showText(title, text) {
+  openModal(`<h2>${esc(title)}</h2><textarea id="show-text" rows="12" readonly>${esc(text)}</textarea>
+    <button type="button" class="btn" id="show-copy">Copy</button>`, null, (form) => {
+    $('#show-copy', form).onclick = () => {
+      const ta = $('#show-text', form);
+      navigator.clipboard?.writeText(text).then(() => toast('Copied'), () => { ta.select(); toast('Selected — copy it from your keyboard menu'); });
+    };
+  });
+}
+
+function copyText(title, text) {
+  if (!navigator.clipboard) { showText(title, text); return; }
+  navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard'), () => showText(title, text));
+}
+
 function openModal(html, onSubmit, onReady) {
   const dlg = $('#modal');
   // Swap in a fresh form so listeners from the previous popup don't linger.
@@ -167,7 +208,7 @@ function renderPlan() {
         <button class="btn" data-act="rename-plan">Rename</button>
         <button class="btn" data-act="clear-plan">Clear week</button>
         <button class="btn danger" data-act="del-plan">Delete</button>
-        <button class="btn primary" onclick="window.print()">Print</button>
+        <button class="btn primary print-btn" onclick="window.print()">Print</button>
       </div>
     </div>
   </section>
@@ -347,8 +388,8 @@ function editIngredient(id) {
   (form) => {
     const del = $('#ing-del', form);
     if (del) del.onclick = () => {
-      if (usedIn.length) { alert('This ingredient is used in: ' + usedIn.map((r) => r.name).join(', ') + '. Remove it from those recipes first.'); return; }
-      if (!confirm('Delete ' + i.name + '?')) return;
+      if (usedIn.length) { toast('Remove it from ' + usedIn.map((r) => r.name).join(', ') + ' first'); return; }
+      if (del.dataset.armed !== '1') { del.dataset.armed = '1'; del.textContent = 'Tap again to delete'; return; }
       state.ingredients = state.ingredients.filter((x) => x.id !== id);
       save(); $('#modal').close(); render();
     };
@@ -389,7 +430,7 @@ function renderShopping() {
   return `<section class="panel">
     <div class="row spread"><div><h2>Shopping list — ${esc(plan.name)}</h2>
       <small>For ${plan.customers} portion${plan.customers > 1 ? 's' : ''} of every meal in the week. Change the plan or numbers on the Meal plan tab.</small></div>
-      <div class="row no-print"><button class="btn" data-act="copy-list">Copy as text</button><button class="btn primary" onclick="window.print()">Print</button></div></div>
+      <div class="row no-print"><button class="btn" data-act="copy-list">Copy as text</button><button class="btn primary print-btn" onclick="window.print()">Print</button></div></div>
     <div class="table-wrap"><table><thead><tr><th>Ingredient</th><th class="num">Quantity</th><th class="num">Est. cost</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="3" class="muted">Add meals to the plan to build a list.</td></tr>'}</tbody>
     <tfoot><tr><th>Total</th><th></th><th class="num">${money(total)}</th></tr></tfoot></table></div>
@@ -445,7 +486,7 @@ function renderLabels() {
   return `<section class="panel no-print">
     <div class="row spread"><div><h2>Labels</h2><small>Ingredients by weight with allergens in bold, nutrition per 100g and per portion, use-by date. Check before use.</small></div>
       <div class="row"><label class="field">Prep date<input type="date" id="prep-date" value="${prepDate}"></label>
-      <button class="btn" data-act="labels-plan">Use this week's plan</button><button class="btn primary" onclick="window.print()">Print labels</button></div></div>
+      <button class="btn" data-act="labels-plan">Use this week's plan</button><button class="btn primary print-btn" onclick="window.print()">Print labels</button></div></div>
     <div class="allergen-pick" style="margin-top:.6rem">${picks}</div>
   </section>
   <div class="labels">${labels || '<p class="muted">Pick recipes above.</p>'}</div>`;
@@ -472,10 +513,12 @@ function renderSettings() {
     <div class="row" style="margin-top:.8rem"><button class="btn primary" data-act="save-settings">Save settings</button></div>
   </section>
   <section class="panel"><h2>Your data</h2>
-    <p class="muted">Data is saved in this browser only. Export a backup regularly, and import it on another device to carry on there.</p>
+    <p class="muted">Your data is saved in this browser on this device only. Make a backup regularly. To carry on on another device, restore the backup there.</p>
     <div class="row">
-      <button class="btn" data-act="export">Export backup (.json)</button>
-      <label class="btn">Import backup<input type="file" id="import-file" accept="application/json" hidden></label>
+      <button class="btn" data-act="copy-backup">Copy backup</button>
+      <button class="btn" data-act="paste-backup">Paste a backup</button>
+      <button class="btn print-btn" data-act="export">Download backup file</button>
+      <label class="btn">Restore from file<input type="file" id="import-file" accept="application/json" hidden></label>
       <button class="btn danger" data-act="reset">Reset to starter data</button>
     </div>
   </section>`;
@@ -501,35 +544,41 @@ document.addEventListener('click', (e) => {
     case 'rm':
       plan.days[d][slot].splice(Number(b.dataset.k), 1);
       break;
-    case 'new-plan': {
-      const name = prompt('Name for the new plan', 'New week');
-      if (!name) return;
-      const p = { id: uid('p'), name, customers: plan.customers, days: {} };
-      state.plans.push(p); state.activePlan = p.id;
-      break;
-    }
+    case 'new-plan':
+      ask({ title: 'New plan', message: 'What should this plan be called?', input: 'New week', ok: 'Create' }).then((name) => {
+        if (!name) return;
+        const p = { id: uid('p'), name, customers: plan.customers, days: {} };
+        state.plans.push(p); state.activePlan = p.id;
+        save(); render();
+      });
+      return;
     case 'dup-plan': {
       const p = structuredClone(plan);
       p.id = uid('p'); p.name = plan.name + ' (copy)';
       state.plans.push(p); state.activePlan = p.id;
       break;
     }
-    case 'rename-plan': {
-      const name = prompt('Rename plan', plan.name);
-      if (!name) return;
-      plan.name = name;
-      break;
-    }
+    case 'rename-plan':
+      ask({ title: 'Rename plan', input: plan.name, ok: 'Rename' }).then((name) => {
+        if (!name) return;
+        plan.name = name; save(); render();
+      });
+      return;
     case 'clear-plan':
-      if (!confirm('Remove every meal from ' + plan.name + '?')) return;
-      plan.days = {};
-      break;
+      ask({ title: 'Clear week?', message: `This removes every meal from ${plan.name}.`, ok: 'Clear week', danger: true }).then((yes) => {
+        if (!yes) return;
+        plan.days = {}; save(); render();
+      });
+      return;
     case 'del-plan':
-      if (state.plans.length === 1) { alert('You need at least one plan.'); return; }
-      if (!confirm('Delete ' + plan.name + '?')) return;
-      state.plans = state.plans.filter((p) => p.id !== plan.id);
-      state.activePlan = state.plans[0].id;
-      break;
+      if (state.plans.length === 1) { toast('You need at least one plan'); return; }
+      ask({ title: 'Delete plan?', message: `${plan.name} will be deleted.`, ok: 'Delete', danger: true }).then((yes) => {
+        if (!yes) return;
+        state.plans = state.plans.filter((p) => p.id !== plan.id);
+        state.activePlan = state.plans[0].id;
+        save(); render();
+      });
+      return;
     case 'new-recipe': editRecipe(); return;
     case 'edit-recipe': editRecipe(b.dataset.id); return;
     case 'dup-recipe': {
@@ -540,16 +589,19 @@ document.addEventListener('click', (e) => {
     }
     case 'del-recipe': {
       const r = recipe(b.dataset.id);
-      if (!confirm('Delete ' + r.name + '? It will also be removed from meal plans.')) return;
-      state.recipes = state.recipes.filter((x) => x.id !== r.id);
-      for (const p of state.plans) for (const day of Object.values(p.days)) for (const s of Object.keys(day)) day[s] = day[s].filter((id) => id !== r.id);
-      break;
+      ask({ title: 'Delete recipe?', message: `${r.name} will also be removed from your meal plans.`, ok: 'Delete', danger: true }).then((yes) => {
+        if (!yes) return;
+        state.recipes = state.recipes.filter((x) => x.id !== r.id);
+        for (const p of state.plans) for (const day of Object.values(p.days)) for (const s of Object.keys(day)) day[s] = day[s].filter((id) => id !== r.id);
+        save(); render();
+      });
+      return;
     }
     case 'new-ing': editIngredient(); return;
     case 'edit-ing': editIngredient(b.dataset.id); return;
     case 'copy-list': {
       const text = `Shopping list — ${plan.name}\n` + shoppingList(plan).map((x) => `- ${x.i.name}: ${fmtQty(x.qty, x.i.unit)}`).join('\n');
-      navigator.clipboard?.writeText(text).then(() => alert('Copied to clipboard'), () => prompt('Copy this list:', text));
+      copyText('Shopping list', text);
       return;
     }
     case 'labels-plan': labelSelection = planRecipeIds(plan); break;
@@ -564,7 +616,7 @@ document.addEventListener('click', (e) => {
       ['kcal', 'protein', 'carbs', 'fat'].forEach((k) => (s.targets[k] = parseFloat(fd.get('t-' + k)) || 0));
       const slots = fd.get('slots').split(',').map((x) => x.trim()).filter(Boolean);
       if (slots.length) s.slots = slots;
-      alert('Settings saved');
+      toast('Settings saved');
       break;
     }
     case 'export': {
@@ -576,11 +628,25 @@ document.addEventListener('click', (e) => {
       URL.revokeObjectURL(a.href);
       return;
     }
+    case 'copy-backup':
+      copyText('Backup', JSON.stringify(state));
+      return;
+    case 'paste-backup':
+      openModal(`<h2>Restore from a copied backup</h2><p class="muted">Paste the backup text you copied earlier. This replaces everything in the app.</p>
+        <textarea id="paste-text" rows="10" required></textarea>`, (form) => {
+        const ok = importBackup($('#paste-text', form).value);
+        return ok ? undefined : false;
+      });
+      return;
     case 'reset':
-      if (!confirm('This replaces all your recipes, ingredients and plans with the starter data. Export a backup first if needed. Continue?')) return;
-      state = structuredClone(SEED);
-      labelSelection = null;
-      break;
+      ask({ title: 'Reset to starter data?', message: 'This replaces all your recipes, ingredients and plans with the examples. Copy a backup first if you want to keep them.', ok: 'Reset', danger: true }).then((yes) => {
+        if (!yes) return;
+        state = structuredClone(SEED);
+        labelSelection = null;
+        save(); render();
+        toast('Starter data restored');
+      });
+      return;
     default: return;
   }
   save(); render();
@@ -597,16 +663,22 @@ document.addEventListener('change', (e) => {
     render();
   }
   if (t.id === 'import-file' && t.files[0]) {
-    t.files[0].text().then((txt) => {
-      try {
-        const data = JSON.parse(txt);
-        if (!data.recipes || !data.ingredients || !data.plans) throw new Error('Not a Smoove Prep backup');
-        state = data; labelSelection = null; save(); render();
-        alert('Backup imported');
-      } catch (err) { alert('Could not import: ' + err.message); }
-    });
+    t.files[0].text().then((txt) => { if (importBackup(txt)) render(); });
   }
 });
+
+function importBackup(txt) {
+  try {
+    const data = JSON.parse(txt);
+    if (!data.recipes || !data.ingredients || !data.plans) throw new Error('this is not a Smoove Prep backup');
+    state = data; labelSelection = null; save();
+    toast('Backup restored');
+    return true;
+  } catch (err) {
+    toast('Could not restore: ' + (err instanceof SyntaxError ? 'the text is incomplete or not a backup' : err.message));
+    return false;
+  }
+}
 
 document.addEventListener('input', (e) => {
   if (e.target.id !== 'ing-search') return;
