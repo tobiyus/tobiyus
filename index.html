@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smoove Prep</title>
+  <meta name="description" content="Meal planning, nutrition, allergens and costing for Smoove Cafe, Melksham.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar no-print">
+    <div class="brand">
+      <span class="logo">S</span>
+      <div>
+        <strong>Smoove Prep</strong>
+        <small>Meal planning · Smoove Cafe, Melksham</small>
+      </div>
+    </div>
+    <nav id="tabs">
+      <button data-tab="plan" class="active">Meal plan</button>
+      <button data-tab="recipes">Recipes</button>
+      <button data-tab="ingredients">Ingredients</button>
+      <button data-tab="shopping">Shopping list</button>
+      <button data-tab="labels">Labels</button>
+      <button data-tab="settings">Settings</button>
+    </nav>
+  </header>
+
+  <main id="app"></main>
+
+  <dialog id="modal">
+    <form method="dialog" id="modal-form"></form>
+  </dialog>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
